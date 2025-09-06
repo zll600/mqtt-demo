@@ -1,0 +1,58 @@
+{
+  "name": "mqtt-smart-home-demo",
+  "version": "1.0.0",
+  "description": "A comprehensive MQTT demo simulating smart home IoT devices with real-time dashboard",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "pnpm run build && node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "dev:devices": "tsx watch src/devices/start-all.ts",
+    "dev:control": "tsx watch src/control/start-control-center.ts", 
+    "dev:dashboard": "tsx watch src/dashboard/start-dashboard.ts",
+    "start:broker": "docker-compose up -d",
+    "stop:broker": "docker-compose down",
+    "start:devices": "pnpm run build && node dist/devices/start-all.js",
+    "start:control": "pnpm run build && node dist/control/start-control-center.js",
+    "start:dashboard": "pnpm run build && node dist/dashboard/start-dashboard.js",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:ui": "vitest --ui",
+    "type-check": "tsc --noEmit",
+    "lint": "echo 'Add your linter here'",
+    "clean": "rm -rf dist",
+    "demo:full": "concurrently \"pnpm run start:broker\" \"pnpm run dev\"",
+    "demo:components": "concurrently \"pnpm run dev:devices\" \"pnpm run dev:control\" \"pnpm run dev:dashboard\""
+  },
+  "keywords": [
+    "mqtt",
+    "iot",
+    "typescript",
+    "smart-home",
+    "demo",
+    "simulation"
+  ],
+  "author": "MQTT Demo Project",
+  "license": "MIT",
+  "dependencies": {
+    "mqtt": "^5.3.4",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/express": "^4.17.21",
+    "@types/uuid": "^9.0.7",
+    "@types/ws": "^8.5.10",
+    "@types/cors": "^2.8.17",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0",
+    "vitest": "^1.1.0",
+    "@vitest/ui": "^1.1.0",
+    "concurrently": "^8.2.2"
+  }
+}

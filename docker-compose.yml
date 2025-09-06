@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/passwd:/mosquitto/config/passwd:ro
+      - ./docker/data:/mosquitto/data
+      - ./docker/logs:/mosquitto/log
+    restart: unless-stopped
+    networks:
+      - mqtt-network
+
+  # Optional: MQTT client tools container for testing
+  mqttx:
+    image: emqx/mqttx-cli:latest
+    container_name: mqttx-cli
+    networks:
+      - mqtt-network
+    profiles:
+      - tools
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+networks:
+  mqtt-network:
+    driver: bridge

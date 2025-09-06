@@ -1,0 +1,23 @@
+{
+  "mqtt": {
+    "qos": {
+      "default": 0,
+      "critical": 1,
+      "status": 1
+    }
+  },
+  "dashboard": {
+    "port": 3000,
+    "updateInterval": 3000
+  },
+  "devices": {
+    "publishInterval": 3000,
+    "heartbeatInterval": 20000,
+    "simulationSpeed": 1.5
+  },
+  "automation": {
+    "enabled": true,
+    "logLevel": "debug",
+    "cooldownMs": 3000
+  }
+}
