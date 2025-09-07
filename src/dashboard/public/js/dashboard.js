@@ -16,7 +16,7 @@ class MQTTDashboard {
 		this.initializeChart();
 		this.setupEventListeners();
 
-		logger.info("🌐 MQTT Dashboard initialized");
+		console.log("🌐 MQTT Dashboard initialized");
 	}
 
 	connectWebSocket() {
@@ -33,7 +33,7 @@ class MQTTDashboard {
 		});
 
 		this.socket.on("initial-data", (data) => {
-			logger.info("📊 Received initial data:", data);
+			console.log("📊 Received initial data:", data);
 			this.handleInitialData(data);
 		});
 
@@ -659,7 +659,7 @@ class MQTTDashboard {
 
 	sendDeviceCommand(deviceId, command) {
 		if (this.socket) {
-			logger.info("🎛️ Sending device command:", { deviceId, command });
+			console.log("🎛️ Sending device command:", { deviceId, command });
 			this.socket.emit("device-command", { deviceId, command });
 			this.showAlert(`Command sent to ${deviceId}`, "success", 2000);
 		}
