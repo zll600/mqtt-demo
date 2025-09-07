@@ -1,261 +1,296 @@
-import mqtt from 'mqtt';
-import { v4 as uuidv4 } from 'uuid';
-import { EventEmitter } from 'node:events';
-import { MqttConfig, buildHomeTopic, buildStatusTopic, buildCommandTopic } from '../config/mqtt-config.js';
+import { EventEmitter } from "node:events";
+import mqtt from "mqtt";
+import { v4 as uuidv4 } from "uuid";
+import {
+	buildCommandTopic,
+	buildHomeTopic,
+	buildStatusTopic,
+	type MqttConfig,
+} from "../config/mqtt-config.js";
+import logger from "../utils/logger.js";
 
 export interface DeviceState {
-  online: boolean;
-  lastSeen: Date;
-  [key: string]: any;
+	online: boolean;
+	lastSeen: Date;
+	[key: string]: any;
 }
 
 export interface DeviceMessage {
-  deviceId: string;
-  timestamp: Date;
-  value: any;
-  topic: string;
-  qos: 0 | 1 | 2;
+	deviceId: string;
+	timestamp: Date;
+	value: any;
+	topic: string;
+	qos: 0 | 1 | 2;
 }
 
 export abstract class BaseDevice extends EventEmitter {
-  protected client: mqtt.MqttClient | null = null;
-  protected deviceId: string;
-  protected deviceType: string;
-  protected room: string;
-  protected name: string;
-  protected state: DeviceState;
-  protected config: MqttConfig;
-  private publishInterval: NodeJS.Timeout | null = null;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
+	protected client: mqtt.MqttClient | null = null;
+	protected deviceId: string;
+	protected deviceType: string;
+	protected room: string;
+	protected name: string;
+	protected state: DeviceState;
+	protected config: MqttConfig;
+	private publishInterval: NodeJS.Timeout | null = null;
+	private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  constructor(
-    deviceType: string,
-    room: string,
-    name: string,
-    config: MqttConfig,
-    deviceId?: string
-  ) {
-    super();
-    this.deviceId = deviceId || `${deviceType}_${room}_${name}_${uuidv4().slice(0, 8)}`;
-    this.deviceType = deviceType;
-    this.room = room;
-    this.name = name;
-    this.config = { ...config, clientId: this.deviceId };
-    this.state = {
-      online: false,
-      lastSeen: new Date(),
-    };
-  }
+	constructor(
+		deviceType: string,
+		room: string,
+		name: string,
+		config: MqttConfig,
+		deviceId?: string,
+	) {
+		super();
+		this.deviceId =
+			deviceId || `${deviceType}_${room}_${name}_${uuidv4().slice(0, 8)}`;
+		this.deviceType = deviceType;
+		this.room = room;
+		this.name = name;
+		this.config = { ...config, clientId: this.deviceId };
+		this.state = {
+			online: false,
+			lastSeen: new Date(),
+		};
+	}
 
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.client = mqtt.connect(this.config.brokerUrl, {
-          clientId: this.config.clientId,
-          username: this.config.username,
-          password: this.config.password,
-          keepalive: this.config.keepalive,
-          clean: this.config.clean,
-          reconnectPeriod: this.config.reconnectPeriod,
-          connectTimeout: this.config.connectTimeout,
-          will: {
-            topic: buildStatusTopic(this.deviceId),
-            payload: JSON.stringify({
-              deviceId: this.deviceId,
-              online: false,
-              timestamp: new Date().toISOString(),
-            }),
-            qos: 1,
-            retain: true,
-          },
-        });
+	async connect(): Promise<void> {
+		return new Promise((resolve, reject) => {
+			try {
+				this.client = mqtt.connect(this.config.brokerUrl, {
+					clientId: this.config.clientId,
+					username: this.config.username,
+					password: this.config.password,
+					keepalive: this.config.keepalive,
+					clean: this.config.clean,
+					reconnectPeriod: this.config.reconnectPeriod,
+					connectTimeout: this.config.connectTimeout,
+					will: {
+						topic: buildStatusTopic(this.deviceId),
+						payload: JSON.stringify({
+							deviceId: this.deviceId,
+							online: false,
+							timestamp: new Date().toISOString(),
+						}),
+						qos: 1,
+						retain: true,
+					},
+				});
 
-        this.client.on('connect', () => {
-          console.log(`Device ${this.deviceId} connected to MQTT broker`);
-          this.state.online = true;
-          this.state.lastSeen = new Date();
-          
-          this.publishStatus();
-          this.subscribeToCommands();
-          this.startHeartbeat();
-          
-          this.emit('connected');
-          resolve();
-        });
+				this.client.on("connect", () => {
+					logger.info(`Device ${this.deviceId} connected to MQTT broker`);
+					this.state.online = true;
+					this.state.lastSeen = new Date();
 
-        this.client.on('error', (error) => {
-          console.error(`MQTT error for device ${this.deviceId}:`, error);
-          this.emit('error', error);
-          reject(error);
-        });
+					this.publishStatus();
+					this.subscribeToCommands();
+					this.startHeartbeat();
 
-        this.client.on('close', () => {
-          console.log(`Device ${this.deviceId} disconnected from MQTT broker`);
-          this.state.online = false;
-          this.emit('disconnected');
-        });
+					this.emit("connected");
+					resolve();
+				});
 
-        this.client.on('reconnect', () => {
-          console.log(`Device ${this.deviceId} reconnecting to MQTT broker`);
-          this.emit('reconnecting');
-        });
+				this.client.on("error", (error) => {
+					logger.error(error, `MQTT error for device ${this.deviceId}:`);
+					this.emit("error", error);
+					reject(error);
+				});
 
-        this.client.on('message', (topic, message) => {
-          try {
-            const payload = JSON.parse(message.toString());
-            this.handleCommand(topic, payload);
-          } catch (error) {
-            console.error(`Failed to parse message for device ${this.deviceId}:`, error);
-          }
-        });
+				this.client.on("close", () => {
+					logger.info(`Device ${this.deviceId} disconnected from MQTT broker`);
+					this.state.online = false;
+					this.emit("disconnected");
+				});
 
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
+				this.client.on("reconnect", () => {
+					logger.info(`Device ${this.deviceId} reconnecting to MQTT broker`);
+					this.emit("reconnecting");
+				});
 
-  protected async publish(metric: string, value: any, qos: 0 | 1 | 2 = 0, retain: boolean = false): Promise<void> {
-    if (!this.client || !this.state.online) {
-      throw new Error(`Device ${this.deviceId} is not connected`);
-    }
+				this.client.on("message", (topic, message) => {
+					try {
+						const payload = JSON.parse(message.toString());
+						this.handleCommand(topic, payload);
+					} catch (error) {
+						logger.error(
+							error,
+							`Failed to parse message for device ${this.deviceId}:`,
+						);
+					}
+				});
+			} catch (error) {
+				reject(error);
+			}
+		});
+	}
 
-    const topic = buildHomeTopic(this.room, this.deviceId, metric);
-    const message: DeviceMessage = {
-      deviceId: this.deviceId,
-      timestamp: new Date(),
-      value,
-      topic,
-      qos,
-    };
+	protected async publish(
+		metric: string,
+		value: any,
+		qos: 0 | 1 | 2 = 0,
+		retain: boolean = false,
+	): Promise<void> {
+		if (!this.client || !this.state.online) {
+			throw new Error(`Device ${this.deviceId} is not connected`);
+		}
 
-    return new Promise((resolve, reject) => {
-      this.client!.publish(topic, JSON.stringify(message), { qos, retain }, (error) => {
-        if (error) {
-          console.error(`Failed to publish message for device ${this.deviceId}:`, error);
-          reject(error);
-        } else {
-          this.state.lastSeen = new Date();
-          this.emit('published', message);
-          resolve();
-        }
-      });
-    });
-  }
+		const topic = buildHomeTopic(this.room, this.deviceId, metric);
+		const message: DeviceMessage = {
+			deviceId: this.deviceId,
+			timestamp: new Date(),
+			value,
+			topic,
+			qos,
+		};
 
-  protected async publishStatus(): Promise<void> {
-    if (!this.client) return;
+		return new Promise((resolve, reject) => {
+			this.client!.publish(
+				topic,
+				JSON.stringify(message),
+				{ qos, retain },
+				(error) => {
+					if (error) {
+						logger.error(
+							error,
+							`Failed to publish message for device ${this.deviceId}:`,
+						);
+						reject(error);
+					} else {
+						this.state.lastSeen = new Date();
+						this.emit("published", message);
+						resolve();
+					}
+				},
+			);
+		});
+	}
 
-    const statusTopic = buildStatusTopic(this.deviceId);
-    const statusMessage = {
-      deviceId: this.deviceId,
-      deviceType: this.deviceType,
-      room: this.room,
-      name: this.name,
-      online: this.state.online,
-      timestamp: new Date().toISOString(),
-      ...this.getDeviceInfo(),
-    };
+	protected async publishStatus(): Promise<void> {
+		if (!this.client) return;
 
-    this.client.publish(statusTopic, JSON.stringify(statusMessage), { qos: 1, retain: true });
-  }
+		const statusTopic = buildStatusTopic(this.deviceId);
+		const statusMessage = {
+			deviceId: this.deviceId,
+			deviceType: this.deviceType,
+			room: this.room,
+			name: this.name,
+			online: this.state.online,
+			timestamp: new Date().toISOString(),
+			...this.getDeviceInfo(),
+		};
 
-  private subscribeToCommands(): void {
-    if (!this.client) return;
+		this.client.publish(statusTopic, JSON.stringify(statusMessage), {
+			qos: 1,
+			retain: true,
+		});
+	}
 
-    const commandTopic = buildCommandTopic(this.deviceId);
-    this.client.subscribe(commandTopic, { qos: 1 }, (error) => {
-      if (error) {
-        console.error(`Failed to subscribe to commands for device ${this.deviceId}:`, error);
-      } else {
-        console.log(`Device ${this.deviceId} subscribed to commands: ${commandTopic}`);
-      }
-    });
-  }
+	private subscribeToCommands(): void {
+		if (!this.client) return;
 
-  private startHeartbeat(): void {
-    this.heartbeatInterval = setInterval(() => {
-      this.publishStatus();
-    }, 30000); // Every 30 seconds
-  }
+		const commandTopic = buildCommandTopic(this.deviceId);
+		this.client.subscribe(commandTopic, { qos: 1 }, (error) => {
+			if (error) {
+				logger.error(
+					error,
+					`Failed to subscribe to commands for device ${this.deviceId}:`,
+				);
+			} else {
+				logger.info(
+					`Device ${this.deviceId} subscribed to commands: ${commandTopic}`,
+				);
+			}
+		});
+	}
 
-  public async disconnect(): Promise<void> {
-    if (this.publishInterval) {
-      clearInterval(this.publishInterval);
-      this.publishInterval = null;
-    }
+	private startHeartbeat(): void {
+		this.heartbeatInterval = setInterval(() => {
+			this.publishStatus();
+		}, 30000); // Every 30 seconds
+	}
 
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+	public async disconnect(): Promise<void> {
+		if (this.publishInterval) {
+			clearInterval(this.publishInterval);
+			this.publishInterval = null;
+		}
 
-    this.state.online = false;
-    await this.publishStatus();
+		if (this.heartbeatInterval) {
+			clearInterval(this.heartbeatInterval);
+			this.heartbeatInterval = null;
+		}
 
-    return new Promise((resolve) => {
-      if (this.client) {
-        this.client.end(false, {}, () => {
-          console.log(`Device ${this.deviceId} disconnected`);
-          resolve();
-        });
-      } else {
-        resolve();
-      }
-    });
-  }
+		this.state.online = false;
+		await this.publishStatus();
 
-  public startPublishing(intervalMs: number = 5000): void {
-    if (this.publishInterval) {
-      clearInterval(this.publishInterval);
-    }
+		return new Promise((resolve) => {
+			if (this.client) {
+				this.client.end(false, {}, () => {
+					logger.info(`Device ${this.deviceId} disconnected`);
+					resolve();
+				});
+			} else {
+				resolve();
+			}
+		});
+	}
 
-    this.publishInterval = setInterval(async () => {
-      try {
-        await this.publishData();
-      } catch (error) {
-        console.error(`Error publishing data for device ${this.deviceId}:`, error);
-      }
-    }, intervalMs);
+	public startPublishing(intervalMs: number = 5000): void {
+		if (this.publishInterval) {
+			clearInterval(this.publishInterval);
+		}
 
-    console.log(`Device ${this.deviceId} started publishing every ${intervalMs}ms`);
-  }
+		this.publishInterval = setInterval(async () => {
+			try {
+				await this.publishData();
+			} catch (error) {
+				logger.error(
+					error,
+					`Error publishing data for device ${this.deviceId}:`,
+				);
+			}
+		}, intervalMs);
 
-  public stopPublishing(): void {
-    if (this.publishInterval) {
-      clearInterval(this.publishInterval);
-      this.publishInterval = null;
-      console.log(`Device ${this.deviceId} stopped publishing`);
-    }
-  }
+		logger.info(
+			`Device ${this.deviceId} started publishing every ${intervalMs}ms`,
+		);
+	}
 
-  // Abstract methods to be implemented by concrete device classes
-  protected abstract publishData(): Promise<void>;
-  protected abstract handleCommand(topic: string, payload: any): void;
-  protected abstract getDeviceInfo(): Record<string, any>;
+	public stopPublishing(): void {
+		if (this.publishInterval) {
+			clearInterval(this.publishInterval);
+			this.publishInterval = null;
+			logger.info(`Device ${this.deviceId} stopped publishing`);
+		}
+	}
 
-  // Getters
-  public getDeviceId(): string {
-    return this.deviceId;
-  }
+	// Abstract methods to be implemented by concrete device classes
+	protected abstract publishData(): Promise<void>;
+	protected abstract handleCommand(topic: string, payload: any): void;
+	protected abstract getDeviceInfo(): Record<string, any>;
 
-  public getDeviceType(): string {
-    return this.deviceType;
-  }
+	// Getters
+	public getDeviceId(): string {
+		return this.deviceId;
+	}
 
-  public getRoom(): string {
-    return this.room;
-  }
+	public getDeviceType(): string {
+		return this.deviceType;
+	}
 
-  public getName(): string {
-    return this.name;
-  }
+	public getRoom(): string {
+		return this.room;
+	}
 
-  public getState(): DeviceState {
-    return { ...this.state };
-  }
+	public getName(): string {
+		return this.name;
+	}
 
-  public isOnline(): boolean {
-    return this.state.online;
-  }
+	public getState(): DeviceState {
+		return { ...this.state };
+	}
+
+	public isOnline(): boolean {
+		return this.state.online;
+	}
 }

@@ -12,15 +12,6 @@ A comprehensive TypeScript/Node.js demonstration of MQTT protocol features throu
 - **Authentication**: Username/password authentication for secure connections
 - **WebSocket Support**: Browser-compatible MQTT over WebSocket
 
-### 🔄 Modern ESM Features
-- **Pure ES Modules**: Full ESM support with `"type": "module"` in package.json
-- **Top-level await**: Configuration loading and async initialization without IIFE
-- **Node.js Protocol Imports**: Using `node:events`, `node:path`, etc. for built-in modules  
-- **Dynamic imports**: Runtime module loading with proper typing
-- **import.meta.url**: Modern file path resolution replacing `__dirname`
-- **Modern tooling**: tsx for development hot-reloading, replacing ts-node-dev
-- **Vitest ESM**: Native ESM test runner with excellent TypeScript support
-
 ### 🏠 Smart Home Simulation
 - **IoT Device Simulators**: Temperature sensors, motion detectors, smart lights, door/window sensors, energy meters
 - **Realistic Data**: Simulated environmental patterns, time-of-day variations, and random events
@@ -44,7 +35,7 @@ A comprehensive TypeScript/Node.js demonstration of MQTT protocol features throu
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Node.js** 18+ and **pnpm**
+- **Node.js** 22+ and **pnpm**
 - **Docker** and **Docker Compose** (for MQTT broker)
 
 ### 1. Clone and Install
@@ -171,7 +162,7 @@ home/status/+           # All device status
 
 ### MQTTX Desktop Client
 1. Download [MQTTX](https://mqttx.app/)
-2. Connect to `mqtt://localhost:1883`
+2. Connect to `mqtt://localhost:11883`
 3. Username: `demo_user`, Password: `demo123`
 4. Subscribe to `home/+/+/+` to see all data
 
@@ -192,7 +183,7 @@ Connect to `ws://localhost:9001` from browser JavaScript:
 const client = mqtt.connect('ws://localhost:9001');
 client.subscribe('home/+/+/+');
 client.on('message', (topic, message) => {
-  console.log('Received:', topic, message.toString());
+  logger.info('Received:', topic, message.toString());
 });
 ```
 
@@ -258,16 +249,6 @@ This demo teaches you:
 - Scalable topic structures for large deployments
 - Real-time data processing and visualization
 
-### Modern TypeScript/Node.js Development
-- **Full ESM Support**: Native ES Modules with import/export
-- **Top-level await**: Modern async initialization patterns  
-- **Node.js Protocol Imports**: Using `node:` prefix for built-ins
-- **Dynamic imports**: Runtime module loading capabilities
-- **Modern tooling**: tsx for development, Vitest for testing
-- **Event-driven architecture**: With EventEmitter and async patterns
-- **WebSocket integration**: Real-time communication with Socket.IO
-- **Docker containerization**: Easy deployment and development
-
 ### Smart Home Automation
 - Rule-based automation systems
 - Sensor data processing and alerting
@@ -318,35 +299,6 @@ mqtt-demo/
 └── package.json
 ```
 
-## 🎯 Advanced Extensions
-
-Want to extend this demo? Try adding:
-
-- **Cloud Integration**: AWS IoT Core, Azure IoT Hub, or Google Cloud IoT
-- **Database Persistence**: Time-series data storage with InfluxDB
-- **Mobile App**: React Native client with MQTT.js
-- **Security Enhancements**: TLS/SSL certificates and advanced authentication
-- **Machine Learning**: Predictive analytics on sensor data
-- **Voice Control**: Alexa/Google Assistant integration
-- **Grafana Dashboards**: Professional monitoring and alerting
-
-## 🤝 Contributing
-
-This is a learning project! Feel free to:
-- Add new device types
-- Create additional automation rules  
-- Improve the web dashboard UI
-- Add more comprehensive testing
-- Write documentation and tutorials
-
-## 📄 License
-
-MIT License - Use this project for learning and experimentation!
-
 ## References
 
 - MQTT: https://en.wikipedia.org/wiki/MQTT
-
----
-
-**🎉 Happy Learning!** This demo provides hands-on experience with MQTT while building something practical and visually engaging. Perfect for understanding IoT communication patterns and modern TypeScript development practices.

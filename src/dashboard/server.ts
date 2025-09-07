@@ -1,366 +1,422 @@
-import express from 'express';
-import { createServer } from 'node:http';
-import { Server as SocketIOServer } from 'socket.io';
-import mqtt from 'mqtt';
-import { join } from 'node:path';
-import cors from 'cors';
-import { webSocketConfig, buildTopic, topicStructure } from '../config/mqtt-config.js';
-import { getCurrentDir } from '../utils/esm-utils.js';
+import { createServer } from "node:http";
+import { join } from "node:path";
+import cors from "cors";
+import express from "express";
+import mqtt from "mqtt";
+import { Server as SocketIOServer } from "socket.io";
+import {
+	buildTopic,
+	topicStructure,
+	webSocketConfig,
+} from "../config/mqtt-config.js";
+import { getCurrentDir } from "../utils/esm-utils.js";
+import logger from "../utils/logger.js";
 
 // Get current directory using ESM utility
 const __dirname = getCurrentDir(import.meta.url);
 
 interface DashboardData {
-  devices: Map<string, any>;
-  notifications: any[];
-  controlCenterStatus: any;
-  ruleStats: any;
+	devices: Map<string, any>;
+	notifications: any[];
+	controlCenterStatus: any;
+	ruleStats: any;
 }
 
 class DashboardServer {
-  private app: express.Application;
-  private server: any;
-  private io: SocketIOServer;
-  private mqttClient: mqtt.MqttClient | null = null;
-  private dashboardData: DashboardData;
-  private port: number = 3000;
+	private app: express.Application;
+	private server: any;
+	private io: SocketIOServer;
+	private mqttClient: mqtt.MqttClient | null = null;
+	private dashboardData: DashboardData;
+	private port: number = 3000;
 
-  constructor(port?: number) {
-    if (port) this.port = port;
-    
-    this.app = express();
-    this.server = createServer(this.app);
-    this.io = new SocketIOServer(this.server, {
-      cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-      }
-    });
+	constructor(port?: number) {
+		if (port) this.port = port;
 
-    this.dashboardData = {
-      devices: new Map(),
-      notifications: [],
-      controlCenterStatus: null,
-      ruleStats: null,
-    };
+		this.app = express();
+		this.server = createServer(this.app);
+		this.io = new SocketIOServer(this.server, {
+			cors: {
+				origin: "*",
+				methods: ["GET", "POST"],
+			},
+		});
 
-    this.setupExpress();
-    this.setupSocketIO();
-  }
+		this.dashboardData = {
+			devices: new Map(),
+			notifications: [],
+			controlCenterStatus: null,
+			ruleStats: null,
+		};
 
-  private setupExpress(): void {
-    // Middleware
-    this.app.use(cors());
-    this.app.use(express.json());
-    this.app.use(express.static(join(__dirname, 'public')));
+		this.setupExpress();
+		this.setupSocketIO();
+	}
 
-    // Serve the main dashboard page
-    this.app.get('/', (req, res) => {
-      res.sendFile(join(__dirname, 'public', 'index.html'));
-    });
+	private setupExpress(): void {
+		this.app.use(cors());
+		this.app.use(express.json());
+		this.app.use(express.static(join(__dirname, "public")));
 
-    // API endpoints
-    this.app.get('/api/devices', (req, res) => {
-      const devices = Array.from(this.dashboardData.devices.entries()).map(([id, data]) => ({
-        id,
-        ...data
-      }));
-      res.json(devices);
-    });
+		this.app.get("/", (req, res) => {
+			res.sendFile(join(__dirname, "public", "index.html"));
+		});
 
-    this.app.get('/api/notifications', (req, res) => {
-      res.json(this.dashboardData.notifications.slice(0, 20));
-    });
+		this.app.get("/api/devices", (req, res) => {
+			const devices = Array.from(this.dashboardData.devices.entries()).map(
+				([id, data]) => ({
+					id,
+					...data,
+				}),
+			);
+			res.json(devices);
+		});
 
-    this.app.get('/api/control-center/status', (req, res) => {
-      res.json(this.dashboardData.controlCenterStatus);
-    });
+		this.app.get("/api/notifications", (req, res) => {
+			res.json(this.dashboardData.notifications.slice(0, 20));
+		});
 
-    this.app.get('/api/rules/stats', (req, res) => {
-      res.json(this.dashboardData.ruleStats);
-    });
+		this.app.get("/api/control-center/status", (req, res) => {
+			res.json(this.dashboardData.controlCenterStatus);
+		});
 
-    // Control endpoints
-    this.app.post('/api/devices/:deviceId/command', (req, res) => {
-      const { deviceId } = req.params;
-      const command = req.body;
-      
-      if (this.mqttClient) {
-        const commandTopic = buildTopic(topicStructure.home, topicStructure.command, deviceId);
-        this.mqttClient.publish(commandTopic, JSON.stringify({
-          ...command,
-          timestamp: new Date().toISOString(),
-          source: 'dashboard',
-        }), { qos: 1 });
-        
-        res.json({ success: true, message: 'Command sent' });
-      } else {
-        res.status(500).json({ success: false, message: 'MQTT client not connected' });
-      }
-    });
+		this.app.get("/api/rules/stats", (req, res) => {
+			res.json(this.dashboardData.ruleStats);
+		});
 
-    this.app.post('/api/control-center/command', (req, res) => {
-      const command = req.body;
-      
-      if (this.mqttClient) {
-        const commandTopic = buildTopic(topicStructure.home, 'control-center', 'command');
-        this.mqttClient.publish(commandTopic, JSON.stringify({
-          ...command,
-          timestamp: new Date().toISOString(),
-          source: 'dashboard',
-        }), { qos: 1 });
-        
-        res.json({ success: true, message: 'Command sent to control center' });
-      } else {
-        res.status(500).json({ success: false, message: 'MQTT client not connected' });
-      }
-    });
+		this.app.post("/api/devices/:deviceId/command", (req, res) => {
+			const { deviceId } = req.params;
+			const command = req.body;
 
-    // Health check endpoint
-    this.app.get('/api/health', (req, res) => {
-      res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        mqttConnected: this.mqttClient?.connected || false,
-        connectedClients: this.io.sockets.sockets.size,
-        deviceCount: this.dashboardData.devices.size,
-      });
-    });
-  }
+			if (this.mqttClient) {
+				const commandTopic = buildTopic(
+					topicStructure.home,
+					topicStructure.command,
+					deviceId,
+				);
+				this.mqttClient.publish(
+					commandTopic,
+					JSON.stringify({
+						...command,
+						timestamp: new Date().toISOString(),
+						source: "dashboard",
+					}),
+					{ qos: 1 },
+				);
 
-  private setupSocketIO(): void {
-    this.io.on('connection', (socket) => {
-      console.log(`🔌 Dashboard client connected: ${socket.id}`);
+				res.json({ success: true, message: "Command sent" });
+			} else {
+				res
+					.status(500)
+					.json({ success: false, message: "MQTT client not connected" });
+			}
+		});
 
-      // Send initial data to the newly connected client
-      socket.emit('initial-data', {
-        devices: Array.from(this.dashboardData.devices.entries()).map(([id, data]) => ({ id, ...data })),
-        notifications: this.dashboardData.notifications.slice(0, 20),
-        controlCenterStatus: this.dashboardData.controlCenterStatus,
-        ruleStats: this.dashboardData.ruleStats,
-      });
+		this.app.post("/api/control-center/command", (req, res) => {
+			const command = req.body;
 
-      // Handle device command from client
-      socket.on('device-command', (data) => {
-        const { deviceId, command } = data;
-        if (this.mqttClient && deviceId && command) {
-          const commandTopic = buildTopic(topicStructure.home, topicStructure.command, deviceId);
-          this.mqttClient.publish(commandTopic, JSON.stringify({
-            ...command,
-            timestamp: new Date().toISOString(),
-            source: 'dashboard-websocket',
-          }), { qos: 1 });
-        }
-      });
+			if (this.mqttClient) {
+				const commandTopic = buildTopic(
+					topicStructure.home,
+					"control-center",
+					"command",
+				);
+				this.mqttClient.publish(
+					commandTopic,
+					JSON.stringify({
+						...command,
+						timestamp: new Date().toISOString(),
+						source: "dashboard",
+					}),
+					{ qos: 1 },
+				);
 
-      // Handle control center command from client
-      socket.on('control-center-command', (command) => {
-        if (this.mqttClient && command) {
-          const commandTopic = buildTopic(topicStructure.home, 'control-center', 'command');
-          this.mqttClient.publish(commandTopic, JSON.stringify({
-            ...command,
-            timestamp: new Date().toISOString(),
-            source: 'dashboard-websocket',
-          }), { qos: 1 });
-        }
-      });
+				res.json({ success: true, message: "Command sent to control center" });
+			} else {
+				res
+					.status(500)
+					.json({ success: false, message: "MQTT client not connected" });
+			}
+		});
 
-      socket.on('disconnect', () => {
-        console.log(`🔌 Dashboard client disconnected: ${socket.id}`);
-      });
-    });
-  }
+		// Health check endpoint
+		this.app.get("/api/health", (req, res) => {
+			res.json({
+				status: "ok",
+				timestamp: new Date().toISOString(),
+				mqttConnected: this.mqttClient?.connected || false,
+				connectedClients: this.io.sockets.sockets.size,
+				deviceCount: this.dashboardData.devices.size,
+			});
+		});
+	}
 
-  public async connectToMqtt(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.mqttClient = mqtt.connect(webSocketConfig.brokerUrl, {
-          clientId: 'dashboard-server',
-          keepalive: webSocketConfig.keepalive,
-          clean: webSocketConfig.clean,
-          reconnectPeriod: webSocketConfig.reconnectPeriod,
-          connectTimeout: webSocketConfig.connectTimeout,
-        });
+	private setupSocketIO(): void {
+		this.io.on("connection", (socket) => {
+			logger.info(`Dashboard client connected: ${socket.id}`);
 
-        this.mqttClient.on('connect', () => {
-          console.log('📡 Dashboard connected to MQTT broker');
-          this.subscribeToTopics();
-          resolve();
-        });
+			// Send initial data to the newly connected client
+			socket.emit("initial-data", {
+				devices: Array.from(this.dashboardData.devices.entries()).map(
+					([id, data]) => ({ id, ...data }),
+				),
+				notifications: this.dashboardData.notifications.slice(0, 20),
+				controlCenterStatus: this.dashboardData.controlCenterStatus,
+				ruleStats: this.dashboardData.ruleStats,
+			});
 
-        this.mqttClient.on('error', (error) => {
-          console.error('Dashboard MQTT error:', error);
-          reject(error);
-        });
+			// Handle device command from client
+			socket.on("device-command", (data) => {
+				const { deviceId, command } = data;
+				if (this.mqttClient && deviceId && command) {
+					const commandTopic = buildTopic(
+						topicStructure.home,
+						topicStructure.command,
+						deviceId,
+					);
+					this.mqttClient.publish(
+						commandTopic,
+						JSON.stringify({
+							...command,
+							timestamp: new Date().toISOString(),
+							source: "dashboard-websocket",
+						}),
+						{ qos: 1 },
+					);
+				}
+			});
 
-        this.mqttClient.on('close', () => {
-          console.log('Dashboard disconnected from MQTT broker');
-        });
+			// Handle control center command from client
+			socket.on("control-center-command", (command) => {
+				if (this.mqttClient && command) {
+					const commandTopic = buildTopic(
+						topicStructure.home,
+						"control-center",
+						"command",
+					);
+					this.mqttClient.publish(
+						commandTopic,
+						JSON.stringify({
+							...command,
+							timestamp: new Date().toISOString(),
+							source: "dashboard-websocket",
+						}),
+						{ qos: 1 },
+					);
+				}
+			});
 
-        this.mqttClient.on('message', (topic, message) => {
-          try {
-            this.handleMqttMessage(topic, message);
-          } catch (error) {
-            console.error('Error handling MQTT message:', error);
-          }
-        });
+			socket.on("disconnect", () => {
+				logger.info(`🔌 Dashboard client disconnected: ${socket.id}`);
+			});
+		});
+	}
 
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
+	public async connectToMqtt(): Promise<void> {
+		return new Promise((resolve, reject) => {
+			try {
+				this.mqttClient = mqtt.connect(webSocketConfig.brokerUrl, {
+					clientId: "dashboard-server",
+					keepalive: webSocketConfig.keepalive,
+					clean: webSocketConfig.clean,
+					reconnectPeriod: webSocketConfig.reconnectPeriod,
+					connectTimeout: webSocketConfig.connectTimeout,
+				});
 
-  private subscribeToTopics(): void {
-    if (!this.mqttClient) return;
+				this.mqttClient.on("connect", () => {
+					logger.info("📡 Dashboard connected to MQTT broker");
+					this.subscribeToTopics();
+					resolve();
+				});
 
-    // Subscribe to all device data
-    const deviceDataTopic = buildTopic(topicStructure.home, '+', '+', '+');
-    this.mqttClient.subscribe(deviceDataTopic, { qos: 0 });
+				this.mqttClient.on("error", (error) => {
+					logger.error(error, "Dashboard MQTT error:");
+					reject(error);
+				});
 
-    // Subscribe to device status
-    const statusTopic = buildTopic(topicStructure.home, topicStructure.status, '+');
-    this.mqttClient.subscribe(statusTopic, { qos: 1 });
+				this.mqttClient.on("close", () => {
+					logger.info("Dashboard disconnected from MQTT broker");
+				});
 
-    // Subscribe to control center messages
-    const controlCenterTopic = buildTopic(topicStructure.home, 'control-center', '+');
-    this.mqttClient.subscribe(controlCenterTopic, { qos: 1 });
+				this.mqttClient.on("message", (topic, message) => {
+					try {
+						this.handleMqttMessage(topic, message);
+					} catch (error) {
+						logger.error(error, "Error handling MQTT message:");
+					}
+				});
+			} catch (error) {
+				reject(error);
+			}
+		});
+	}
 
-    console.log('📡 Dashboard subscribed to MQTT topics');
-  }
+	private subscribeToTopics(): void {
+		if (!this.mqttClient) return;
 
-  private handleMqttMessage(topic: string, message: Buffer): void {
-    try {
-      const payload = JSON.parse(message.toString());
-      const topicParts = topic.split('/');
+		// Subscribe to all device data
+		const deviceDataTopic = buildTopic(topicStructure.home, "+", "+", "+");
+		this.mqttClient.subscribe(deviceDataTopic, { qos: 0 });
 
-      if (topicParts[0] === topicStructure.home) {
-        if (topicParts[1] === topicStructure.status) {
-          // Device status
-          this.handleDeviceStatus(topicParts[2], payload);
-        } else if (topicParts[1] === 'control-center') {
-          // Control center messages
-          this.handleControlCenterMessage(topicParts[2], payload);
-        } else if (topicParts.length >= 4) {
-          // Device data
-          this.handleDeviceData(topicParts, payload);
-        }
-      }
-    } catch (error) {
-      console.error(`Error parsing MQTT message from ${topic}:`, error);
-    }
-  }
+		// Subscribe to device status
+		const statusTopic = buildTopic(
+			topicStructure.home,
+			topicStructure.status,
+			"+",
+		);
+		this.mqttClient.subscribe(statusTopic, { qos: 1 });
 
-  private handleDeviceStatus(deviceId: string, payload: any): void {
-    const existingDevice = this.dashboardData.devices.get(deviceId) || {};
-    const deviceData = {
-      ...existingDevice,
-      id: deviceId,
-      deviceId,
-      deviceType: payload.deviceType || existingDevice.deviceType || 'unknown',
-      room: payload.room || existingDevice.room || 'unknown',
-      name: payload.name || existingDevice.name || deviceId,
-      online: payload.online !== undefined ? payload.online : true,
-      lastSeen: payload.timestamp ? new Date(payload.timestamp) : new Date(),
-      status: payload,
-    };
+		// Subscribe to control center messages
+		const controlCenterTopic = buildTopic(
+			topicStructure.home,
+			"control-center",
+			"+",
+		);
+		this.mqttClient.subscribe(controlCenterTopic, { qos: 1 });
 
-    this.dashboardData.devices.set(deviceId, deviceData);
-    
-    // Emit to connected clients
-    this.io.emit('device-status', deviceData);
-  }
+		logger.info("Dashboard subscribed to MQTT topics");
+	}
 
-  private handleDeviceData(topicParts: string[], payload: any): void {
-    const room = topicParts[1];
-    const deviceId = topicParts[2];
-    const metric = topicParts[3];
+	private handleMqttMessage(topic: string, message: Buffer): void {
+		try {
+			const payload = JSON.parse(message.toString());
+			const topicParts = topic.split("/");
 
-    const existingDevice = this.dashboardData.devices.get(deviceId) || {};
-    const deviceData = {
-      ...existingDevice,
-      id: deviceId,
-      deviceId,
-      room,
-      name: payload.name || existingDevice.name || deviceId,
-      deviceType: payload.deviceType || existingDevice.deviceType || 'unknown',
-      online: true,
-      lastSeen: payload.timestamp ? new Date(payload.timestamp) : new Date(),
-      data: {
-        ...existingDevice.data,
-        [metric]: {
-          value: payload.value || payload,
-          timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date(),
-        },
-      },
-    };
+			if (topicParts[0] === topicStructure.home) {
+				if (topicParts[1] === topicStructure.status) {
+					// Device status
+					this.handleDeviceStatus(topicParts[2], payload);
+				} else if (topicParts[1] === "control-center") {
+					// Control center messages
+					this.handleControlCenterMessage(topicParts[2], payload);
+				} else if (topicParts.length >= 4) {
+					// Device data
+					this.handleDeviceData(topicParts, payload);
+				}
+			}
+		} catch (error) {
+			logger.error(error, `Error parsing MQTT message from ${topic}:`);
+		}
+	}
 
-    this.dashboardData.devices.set(deviceId, deviceData);
-    
-    // Emit real-time data to connected clients
-    this.io.emit('device-data', {
-      deviceId,
-      metric,
-      value: payload.value || payload,
-      timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date(),
-    });
-  }
+	private handleDeviceStatus(deviceId: string, payload: any): void {
+		const existingDevice = this.dashboardData.devices.get(deviceId) || {};
+		const deviceData = {
+			...existingDevice,
+			id: deviceId,
+			deviceId,
+			deviceType: payload.deviceType || existingDevice.deviceType || "unknown",
+			room: payload.room || existingDevice.room || "unknown",
+			name: payload.name || existingDevice.name || deviceId,
+			online: payload.online !== undefined ? payload.online : true,
+			lastSeen: payload.timestamp ? new Date(payload.timestamp) : new Date(),
+			status: payload,
+		};
 
-  private handleControlCenterMessage(messageType: string, payload: any): void {
-    switch (messageType) {
-      case 'status':
-        this.dashboardData.controlCenterStatus = payload;
-        this.io.emit('control-center-status', payload);
-        break;
-      case 'notification':
-        this.dashboardData.notifications.unshift(payload);
-        if (this.dashboardData.notifications.length > 100) {
-          this.dashboardData.notifications = this.dashboardData.notifications.slice(0, 100);
-        }
-        this.io.emit('notification', payload);
-        break;
-      case 'rule-stats':
-        this.dashboardData.ruleStats = payload;
-        this.io.emit('rule-stats', payload);
-        break;
-      case 'log':
-        this.io.emit('control-center-log', payload);
-        break;
-      default:
-        // Forward other control center messages
-        this.io.emit('control-center-message', { type: messageType, data: payload });
-    }
-  }
+		this.dashboardData.devices.set(deviceId, deviceData);
 
-  public start(): Promise<void> {
-    return new Promise((resolve) => {
-      this.server.listen(this.port, () => {
-        console.log(`🌐 Dashboard server running on http://localhost:${this.port}`);
-        resolve();
-      });
-    });
-  }
+		// Emit to connected clients
+		this.io.emit("device-status", deviceData);
+	}
 
-  public async stop(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.mqttClient) {
-        this.mqttClient.end();
-      }
-      
-      this.server.close(() => {
-        console.log('🛑 Dashboard server stopped');
-        resolve();
-      });
-    });
-  }
+	private handleDeviceData(topicParts: string[], payload: any): void {
+		const room = topicParts[1];
+		const deviceId = topicParts[2];
+		const metric = topicParts[3];
 
-  public getConnectedClients(): number {
-    return this.io.sockets.sockets.size;
-  }
+		const existingDevice = this.dashboardData.devices.get(deviceId) || {};
+		const deviceData = {
+			...existingDevice,
+			id: deviceId,
+			deviceId,
+			room,
+			name: payload.name || existingDevice.name || deviceId,
+			deviceType: payload.deviceType || existingDevice.deviceType || "unknown",
+			online: true,
+			lastSeen: payload.timestamp ? new Date(payload.timestamp) : new Date(),
+			data: {
+				...existingDevice.data,
+				[metric]: {
+					value: payload.value || payload,
+					timestamp: payload.timestamp
+						? new Date(payload.timestamp)
+						: new Date(),
+				},
+			},
+		};
 
-  public getDeviceCount(): number {
-    return this.dashboardData.devices.size;
-  }
+		this.dashboardData.devices.set(deviceId, deviceData);
+
+		// Emit real-time data to connected clients
+		this.io.emit("device-data", {
+			deviceId,
+			metric,
+			value: payload.value || payload,
+			timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date(),
+		});
+	}
+
+	private handleControlCenterMessage(messageType: string, payload: any): void {
+		switch (messageType) {
+			case "status":
+				this.dashboardData.controlCenterStatus = payload;
+				this.io.emit("control-center-status", payload);
+				break;
+			case "notification":
+				this.dashboardData.notifications.unshift(payload);
+				if (this.dashboardData.notifications.length > 100) {
+					this.dashboardData.notifications =
+						this.dashboardData.notifications.slice(0, 100);
+				}
+				this.io.emit("notification", payload);
+				break;
+			case "rule-stats":
+				this.dashboardData.ruleStats = payload;
+				this.io.emit("rule-stats", payload);
+				break;
+			case "log":
+				this.io.emit("control-center-log", payload);
+				break;
+			default:
+				// Forward other control center messages
+				this.io.emit("control-center-message", {
+					type: messageType,
+					data: payload,
+				});
+		}
+	}
+
+	public start(): Promise<void> {
+		return new Promise((resolve) => {
+			this.server.listen(this.port, () => {
+				logger.info(
+					`Dashboard server running on http://localhost:${this.port}`,
+				);
+				resolve();
+			});
+		});
+	}
+
+	public async stop(): Promise<void> {
+		return new Promise((resolve) => {
+			if (this.mqttClient) {
+				this.mqttClient.end();
+			}
+
+			this.server.close(() => {
+				logger.info("Dashboard server stopped");
+				resolve();
+			});
+		});
+	}
+
+	public getConnectedClients(): number {
+		return this.io.sockets.sockets.size;
+	}
+
+	public getDeviceCount(): number {
+		return this.dashboardData.devices.size;
+	}
 }
 
 export default DashboardServer;
