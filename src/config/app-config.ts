@@ -1,10 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { getCurrentDir } from "../utils/esm-utils.js";
 import { logger } from "../utils/logger.js";
-
-// Get current directory
-const __dirname = getCurrentDir(import.meta.url);
 
 export interface AppConfiguration {
 	mqtt: {

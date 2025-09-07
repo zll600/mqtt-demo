@@ -108,7 +108,7 @@ export class ControlCenter extends EventEmitter {
 						logger.error(error, "Error handling message:");
 					}
 				});
-			} catch (error) {
+			} catch (error: unknown) {
 				reject(error);
 			}
 		});
@@ -159,11 +159,10 @@ export class ControlCenter extends EventEmitter {
 			if (error) {
 				logger.error(error, "Failed to subscribe to device status:");
 			} else {
-				logger.info(`📊 Subscribed to device status: ${statusTopic}`);
+				logger.info(`Subscribed to device status: ${statusTopic}`);
 			}
 		});
 
-		// Subscribe to control center commands
 		const commandTopic = buildTopic(
 			topicStructure.home,
 			"control-center",
@@ -173,7 +172,7 @@ export class ControlCenter extends EventEmitter {
 			if (error) {
 				logger.error(error, "Failed to subscribe to control center commands:");
 			} else {
-				logger.info(`🎛️ Subscribed to control commands: ${commandTopic}`);
+				logger.info(`Subscribed to control commands: ${commandTopic}`);
 			}
 		});
 	}
@@ -233,7 +232,7 @@ export class ControlCenter extends EventEmitter {
 	}
 
 	private handleControlCenterCommand(payload: any): void {
-		logger.info("🎛️ Control Center received command:", payload);
+		logger.info("Control Center received command:", payload);
 
 		switch (payload.command) {
 			case "getRuleStats":

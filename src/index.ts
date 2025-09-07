@@ -4,7 +4,6 @@ import {
 	createSmartHomeDevices,
 	DeviceManager,
 } from "./devices/device-manager.js";
-import { isMainModule } from "./utils/esm-utils.js";
 import logger from "./utils/logger.js";
 
 interface AppConfig {
@@ -41,7 +40,6 @@ class MQTTSmartHomeApp {
 		logger.info("");
 
 		try {
-			// Start components in order
 			if (this.config.startDevices) {
 				await this.startDeviceSimulators();
 			}
@@ -56,7 +54,7 @@ class MQTTSmartHomeApp {
 
 			logger.info("MQTT Smart Home Demo is fully operational!");
 			this.printUsageInstructions();
-		} catch (error) {
+		} catch (error: unknown) {
 			logger.error(error, "Failed to start MQTT Smart Home Demo:");
 			throw error;
 		}
@@ -193,7 +191,7 @@ class MQTTSmartHomeApp {
 		}
 
 		await Promise.all(stopPromises);
-		logger.info("✅ All components stopped gracefully");
+		logger.info("All components stopped gracefully");
 	}
 
 	public getStatus(): {
@@ -227,10 +225,10 @@ async function main() {
 		logger.info("\nReceived SIGINT (Ctrl+C), shutting down gracefully...");
 		try {
 			await app.stop();
-			process.exit(0);
+			process.exitCode = 0;
 		} catch (error) {
 			logger.error(error, "Error during shutdown:");
-			process.exit(1);
+			process.exitCode = 1;
 		}
 	});
 
@@ -238,34 +236,31 @@ async function main() {
 		logger.info("Received SIGTERM, shutting down gracefully...");
 		try {
 			await app.stop();
-			process.exit(0);
+			process.exitCode = 0;
 		} catch (error) {
 			logger.error(error, "Error during shutdown:");
-			process.exit(1);
+			process.exitCode = 1;
 		}
 	});
 
 	process.on("unhandledRejection", (reason, promise) => {
 		logger.error(reason, "Unhandled Rejection");
-		app.stop().then(() => process.exit(1));
+		app.stop().then(() => process.exitCode = 1);
 	});
 
 	process.on("uncaughtException", (error) => {
 		logger.error(error, "Uncaught Exception");
-		app.stop().then(() => process.exit(1));
+		app.stop().then(() => process.exitCode = 1);
 	});
 
 	try {
 		await app.start();
 	} catch (error) {
 		logger.error(error, "Failed to start application:");
-		process.exit(1);
+		process.exitCode = 1;
 	}
 }
 
 export { MQTTSmartHomeApp };
 
-// Run if this is the main module (using ESM utility)
-if (isMainModule(import.meta.url)) {
-	main();
-}
+await main();

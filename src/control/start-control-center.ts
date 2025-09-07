@@ -2,7 +2,7 @@ import logger from "../utils/logger.js";
 import { ControlCenter } from "./control-center.js";
 
 async function main() {
-	logger.info("🏢 Starting MQTT Smart Home Control Center");
+	logger.info("Starting MQTT Smart Home Control Center");
 	logger.info("=========================================");
 
 	const controlCenter = new ControlCenter({
@@ -11,21 +11,19 @@ async function main() {
 		logLevel: "info",
 	});
 
-	// Set up event listeners
 	controlCenter.on("connected", () => {
-		logger.info("✅ Control Center successfully connected and ready");
-		logger.info("🤖 Automation rules are active");
+		logger.info("Control Center successfully connected and ready");
+		logger.info("Automation rules are active");
 
-		// Start periodic status updates
 		controlCenter.startStatusUpdates(30000); // Every 30 seconds
 	});
 
 	controlCenter.on("disconnected", () => {
-		logger.info("❌ Control Center disconnected from broker");
+		logger.info("Control Center disconnected from broker");
 	});
 
 	controlCenter.on("error", (error) => {
-		logger.error(error, "❌ Control Center error:");
+		logger.error(error, "Control Center error:");
 	});
 
 	controlCenter.on("notification", (notification) => {
@@ -69,14 +67,14 @@ async function main() {
 				});
 		}
 
-		logger.info("\n🚀 Control Center is running!");
-		logger.info("💡 Features:");
+		logger.info("\nControl Center is running!");
+		logger.info("Features:");
 		logger.info("   • Automated device control based on rules");
 		logger.info("   • Real-time monitoring and notifications");
 		logger.info("   • Smart home automation (lights, security, energy)");
 		logger.info("   • Rule-based decision making");
 
-		logger.info("\n📡 MQTT Topics:");
+		logger.info("\nMQTT Topics:");
 		logger.info(
 			'   • Subscribe to "home/control-center/+" to see all control center messages',
 		);
@@ -85,7 +83,7 @@ async function main() {
 			'   • View notifications at "home/control-center/notification"',
 		);
 
-		logger.info("\n📝 Example Commands:");
+		logger.info("\nExample Commands:");
 		logger.info('   • Get rule stats: {"command": "getRuleStats"}');
 		logger.info(
 			'   • Enable rule: {"command": "enableRule", "ruleId": "motion-lights-on"}',
@@ -94,16 +92,15 @@ async function main() {
 			'   • Send device command: {"command": "sendDeviceCommand", "deviceId": "device-id", "deviceCommand": {"command": "turnOn"}}',
 		);
 
-		logger.info("\n⏳ Running... Press Ctrl+C to stop");
+		logger.info("\nRunning... Press Ctrl+C to stop");
 
-		// Log periodic statistics
 		setInterval(() => {
 			const stats = controlCenter.getRuleEngine().getStats();
 			const notifications = controlCenter.getUnacknowledgedNotifications();
 			const timestamp = new Date().toISOString();
 
 			logger.info(
-				`[${timestamp}] 📊 Stats: ${stats.onlineDevices}/${stats.totalDevices} devices, ${notifications.length} unack. notifications`,
+				`[${timestamp}] Stats: ${stats.onlineDevices}/${stats.totalDevices} devices, ${notifications.length} unack. notifications`,
 			);
 
 			if (stats.recentExecutions.length > 0) {
@@ -112,33 +109,33 @@ async function main() {
 				);
 			}
 		}, 60000); // Every minute
-	} catch (error) {
-		logger.error(error, "❌ Failed to start Control Center:");
-		process.exit(1);
+	} catch (error: unknown) {
+		logger.error(error, "Failed to start Control Center:");
+		process.exitCode = 1;
 	}
 
 	// Graceful shutdown
 	process.on("SIGINT", async () => {
-		logger.info("\n🛑 Shutting down Control Center...");
+		logger.info("\nShutting down Control Center...");
 		try {
 			await controlCenter.disconnect();
-			logger.info("✅ Control Center stopped gracefully");
-			process.exit(0);
+			logger.info("Control Center stopped gracefully");
+			process.exitCode = 0;
 		} catch (error) {
-			logger.error(error, "❌ Error during shutdown:");
-			process.exit(1);
+			logger.error(error, "Error during shutdown:");
+			process.exitCode = 1;
 		}
 	});
 
 	process.on("SIGTERM", async () => {
-		logger.info("🛑 Received SIGTERM, shutting down...");
+		logger.info("Received SIGTERM, shutting down...");
 		try {
 			await controlCenter.disconnect();
-			logger.info("✅ Control Center stopped gracefully");
-			process.exit(0);
+			logger.info("Control Center stopped gracefully");
+			process.exitCode = 0;
 		} catch (error) {
-			logger.error(error, "❌ Error during shutdown:");
-			process.exit(1);
+			logger.error(error, "Error during shutdown:");
+			process.exitCode = 1;;
 		}
 	});
 }
@@ -146,13 +143,13 @@ async function main() {
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, _promise) => {
 	logger.error(reason, "Unhandled Rejection");
-	process.exit(1);
+	process.exitCode = 1;
 });
 
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
 	logger.error(error, "Uncaught Exception");
-	process.exit(1);
+	process.exitCode = 1;
 });
 
 if (import.meta.url === `file://${process.argv[1]}`) {

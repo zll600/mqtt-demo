@@ -31,14 +31,14 @@ export class DeviceManager {
 		process.on("SIGINT", () => {
 			logger.info("\nReceived SIGINT, shutting down gracefully...");
 			this.stopAllDevices().then(() => {
-				process.exit(0);
+				process.exitCode = 0;
 			});
 		});
 
 		process.on("SIGTERM", () => {
 			logger.info("Received SIGTERM, shutting down gracefully...");
 			this.stopAllDevices().then(() => {
-				process.exit(0);
+				process.exitCode = 0;
 			});
 		});
 	}

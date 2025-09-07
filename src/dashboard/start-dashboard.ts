@@ -54,19 +54,18 @@ async function main() {
 		}, 60000); // Every minute
 	} catch (error) {
 		logger.error(error, "Failed to start dashboard server:");
-		process.exit(1);
+		process.exitCode = 1;
 	}
 
-	// Graceful shutdown
 	process.on("SIGINT", async () => {
 		logger.info("\nShutting down dashboard server...");
 		try {
 			await dashboardServer.stop();
 			logger.info("Dashboard server stopped gracefully");
-			process.exit(0);
+			process.exitCode = 0;
 		} catch (error) {
 			logger.error(error, "Error during shutdown:");
-			process.exit(1);
+			process.exitCode = 1;
 		}
 	});
 
@@ -75,10 +74,10 @@ async function main() {
 		try {
 			await dashboardServer.stop();
 			logger.info("✅ Dashboard server stopped gracefully");
-			process.exit(0);
+			process.exitCode = 0;
 		} catch (error) {
 			logger.error(error, "❌ Error during shutdown:");
-			process.exit(1);
+			process.exitCode = 1;
 		}
 	});
 }
@@ -86,13 +85,13 @@ async function main() {
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, _promise) => {
 	logger.error(reason, "Unhandled Rejection");
-	process.exit(1);
+	process.exitCode = 1;
 });
 
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
 	logger.error(error, "Uncaught Exception:");
-	process.exit(1);
+	process.exitCode = 1;
 });
 
 if (import.meta.url === `file://${process.argv[1]}`) {

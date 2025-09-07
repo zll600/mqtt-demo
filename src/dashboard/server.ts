@@ -9,11 +9,9 @@ import {
 	topicStructure,
 	webSocketConfig,
 } from "../config/mqtt-config.js";
-import { getCurrentDir } from "../utils/esm-utils.js";
 import logger from "../utils/logger.js";
 
 // Get current directory using ESM utility
-const __dirname = getCurrentDir(import.meta.url);
 
 interface DashboardData {
 	devices: Map<string, any>;
@@ -139,7 +137,6 @@ class DashboardServer {
 			}
 		});
 
-		// Health check endpoint
 		this.app.get("/api/health", (req, res) => {
 			res.json({
 				status: "ok",
@@ -186,7 +183,6 @@ class DashboardServer {
 				}
 			});
 
-			// Handle control center command from client
 			socket.on("control-center-command", (command) => {
 				if (this.mqttClient && command) {
 					const commandTopic = buildTopic(
@@ -207,7 +203,7 @@ class DashboardServer {
 			});
 
 			socket.on("disconnect", () => {
-				logger.info(`🔌 Dashboard client disconnected: ${socket.id}`);
+				logger.info(`Dashboard client disconnected: ${socket.id}`);
 			});
 		});
 	}
@@ -224,7 +220,7 @@ class DashboardServer {
 				});
 
 				this.mqttClient.on("connect", () => {
-					logger.info("📡 Dashboard connected to MQTT broker");
+					logger.info("Dashboard connected to MQTT broker");
 					this.subscribeToTopics();
 					resolve();
 				});
@@ -245,7 +241,7 @@ class DashboardServer {
 						logger.error(error, "Error handling MQTT message:");
 					}
 				});
-			} catch (error) {
+			} catch (error: unknown) {
 				reject(error);
 			}
 		});
@@ -294,8 +290,8 @@ class DashboardServer {
 					this.handleDeviceData(topicParts, payload);
 				}
 			}
-		} catch (error) {
-			logger.error(error, `Error parsing MQTT message from ${topic}:`);
+		} catch (error: unknown) {
+			logger.error(error, `Error parsing MQTT message from ${topic}`);
 		}
 	}
 
